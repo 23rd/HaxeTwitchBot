@@ -1,6 +1,24 @@
 package;
 
 import cpp.Lib;
+import haxe.Json;
+import haxe.MainLoop;
+import sys.FileSystem;
+import sys.io.File;
+import sys.net.Host;
+import sys.ssl.Socket;
+
+typedef BotConfig = {
+	var nick: String;
+	var user: String;
+	var realName: String;
+
+	var owner: String;
+	var server: String;
+	var port: Int;
+	var serverPass: String;
+	var channels: Array<String>;
+}
 
 /**
  * ...10.03.2017 13:56
@@ -8,8 +26,116 @@ import cpp.Lib;
  */
 class Main {
 	
+	static var sock:Socket;
+
+	static var cfg:BotConfig;
+
+	// The MainEvent received from the MainLoop.
+	// Used for delaying and stopping the loop.
+	static var mLoopEvt: MainEvent;
+
 	static function main() {
+		// default config
+		cfg = {
+			nick: "haxebot", user: "hxbot", realName: "Me Mow", owner: "slipyx",
+			server: "chat.freenode.net", port: 6697, serverPass: "", channels: ["#ganymede"]
+		};
+
+		if (FileSystem.exists( "./cfg.json" ) )
+			cfg = Json.parse(File.getContent("./cfg.json"));
+			
+		sock = new Socket();
 		
+		sock.verifyCert = false;
+		sock.connect(new Host(cfg.server), cfg.port);
+		sock.setBlocking(false);
+
+		if (cfg.serverPass != "") send("PASS " + cfg.serverPass);
+		send("NICK " + cfg.nick);
+		send("USER " + cfg.user + " 0 * :" + cfg.realName);
+		send("CAP REQ :twitch.tv/membership");
+		send("CAP REQ :twitch.tv/commands");
+		send("CAP REQ :twitch.tv/tags");
+
+		// Add function for reading socket to MainLoop
+		mLoopEvt = MainLoop.add( function() {
+			var r = sys.net.Socket.select( [sock], null, null, 0 );
+			// check if socket has incoming data and read each line in turn until EOF
+			if ( r.read.length > 0 )
+				for ( s in r.read )
+					// loop will break when readLine throws EOF
+					while ( true )
+						try {
+							var msg = s.input.readLine();
+							handleMsg( msg );
+						} catch ( e: Dynamic ) { break; }
+			// dont loop faster than 10 times per second
+			mLoopEvt.delay( 0.1 );
+		} );
+		// grace please
+		//sock.shutdown( true, true );
+		//sock.close();
+	}
+
+	static function meowFunc() {
+		for ( c in cfg.channels )
+			send( "PRIVMSG " + c + " :Test blyad." );
+	}
+
+	public static function send( str: String ) {
+		// truncate over 510
+		if ( str.length > 510 ) str = str.substr( 0, 510 );
+
+		// strip newline chars
+		str = str.split( "\r" ).join( " " );
+		str = str.split( "\n" ).join( " " );
+
+		Sys.println( ">> " + str );
+
+		sock.output.writeString( str + "\r\n" );
+		sock.output.flush();
+	}
+
+	static function handleMsg( msg: String ) {
+		// Chop up the message for easier parsing.
+		trace(msg);
+		//meowFunc();
+		var ix = msg.indexOf( ":", 1 );
+		var words = msg.substr( 0, ix ).split( " " );
+		msg = msg.substr( ix + 1 );
+
+		if ( words[0] == "PING" ) {
+			Sys.print( 'PING [' + Date.now() + '] ' );
+			send( "PONG :" + msg );
+		} else if ( words[1] == "001" ) {
+			Sys.println( "CONNECTED!" );
+			for ( c in cfg.channels ) {
+				send( "JOIN " + c );
+				//send( "PRIVMSG " + c + " :meow" );
+			}
+		} else if ( words[1] == "PRIVMSG" ) {
+			// channel or pm user
+			var src = words[2];
+
+			// nick!user@host.name
+			var nick = words[0].substr( 1, words[0].indexOf( "!" ) - 1 );
+
+			// first word of message interpreted as a command, rest as parameters
+			var cix = msg.indexOf( " " );
+			var cmd = msg.substr( 0, cix );
+			msg = msg.substr( cix + 1 );
+			Sys.println( "(" + src + ") <" + nick + "> " + cmd + " " + msg );
+
+			// commands
+
+			// preliminary join/part support
+			// TODO: update cfg.channels dynamically as well
+			if ( nick == cfg.owner && cmd == ";join" ) {
+				send( "JOIN " + msg );
+			} else if ( nick == cfg.owner && cmd == ";part" ) {
+				send( "PART " + msg );
+			}
+		}
 	}
 	
 }
