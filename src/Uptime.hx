@@ -24,6 +24,10 @@ class Uptime {
 	
 	private function loadBroadcastsJson():Void {
 		var json:Dynamic = Json.parse(Http.requestUrl("https://api.twitch.tv/kraken/channels/" + channel + "/videos?broadcasts=true&limit=15&client_id=" + clientId));
+		if (json.videos.length == 0) {
+			recordedAt = "";
+			return;
+		}
 		var recorded_at:String = json.videos[0].recorded_at;
 		
 		if (json.videos[0].status == "recorded") {
@@ -36,6 +40,10 @@ class Uptime {
 	}
 	
 	public function getUptime():String {
+		trace(channel, recordedAt);
+		if (recordedAt == "") {
+			return "Cant get uptime information.";
+		}
 		var timeString:String = recordedAt;
 		timeString = StringTools.replace(timeString, "T", " ");
 		timeString = StringTools.replace(timeString, "Z", "");

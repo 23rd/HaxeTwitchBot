@@ -2,6 +2,7 @@ package;
 
 import haxe.Json;
 import haxe.MainLoop;
+import haxe.ds.StringMap;
 import sys.FileSystem;
 import sys.io.File;
 import sys.net.Host;
@@ -33,7 +34,9 @@ class Main {
 	// Used for delaying and stopping the loop.
 	private var mLoopEvt:MainEvent;
 	
-	private var uptime:Uptime;
+	private var mapUptime:StringMap<Uptime>;
+	
+	private var commands:Dynamic;
 
 	static function main() {
 		new Main();
@@ -50,11 +53,15 @@ class Main {
 			server:"chat.freenode.net", port:6697, serverPass:"", channels:["#ganymede"], clientId:""
 		};
 		
-		if (FileSystem.exists("./cfg.json")) {
-			config = Json.parse(File.getContent("./cfg.json"));
+		if (FileSystem.exists("./config.json")) {
+			config = Json.parse(File.getContent("./config.json"));
 		}
 		
-		uptime = new Uptime("twitch", config.clientId);
+		if (FileSystem.exists("./commands.json")) {
+			commands = Json.parse(File.getContent("./commands.json"));
+		}
+		
+		mapUptime = new StringMap<Uptime>();
 		
 		socket = new Socket();
 		socket.verifyCert = false;
@@ -92,9 +99,9 @@ class Main {
 		//sock.close();
 	}
 
-	private function sendMessage(string:String) {
-		for (c in config.channels)
-			send("PRIVMSG " + c + " :" + string);
+	private function sendMessage(string:String, channel:String) {
+		//for (c in config.channels)
+		send("PRIVMSG #" + channel + " :" + string);
 	}
 
 	public function send(string:String) {
@@ -126,51 +133,51 @@ class Main {
 
 	private function handleMessage(message:String) {
 		// Chop up the message for easier parsing.
+		trace(message);
+		
+		if (message.indexOf("tmi.twitch.tv 376") > -1) {
+			Sys.println("CONNECTED!");
+			for (c in config.channels) {
+				send("JOIN " + c);
+				mapUptime.set(c.substr(1), new Uptime(c.substr(1), config.clientId));
+			}
+			return;
+		}
 		
 		if (message.indexOf("PRIVMSG") > -1) {
 			var messageArray:Array<String> = message.split(":");
 			var userInfo:Dynamic = tagToJson(messageArray[0]);
+			var channel:String = getChannel(messageArray[1]);
+			var userMessage:String = messageArray[messageArray.length - 1];
+			var commandsOfChannel:Array<Dynamic> = Reflect.getProperty(commands.channels, channel);
+			var regExp:EReg;
+			var resultString:String;
 			
-			if (messageArray[messageArray.length - 1] == "!up") {
-				sendMessage(uptime.getUptime());
+			for (i in commandsOfChannel) {
+				regExp = new EReg(i.command, "u");
+				if (regExp.match(userMessage)) {
+					if (i.message == "/timeout" || i.message == "/ban") {
+						var time:Int = (i.random ? (Math.round(Math.random() * 500000 + 5000)) : 600);
+						var banMessage:String = (i.banMessage != null ? i.banMessage : "");
+						resultString = i.message + " " + Reflect.getProperty(userInfo, "display-name") + (i.message == "/ban" ? "" : " " + time) + " " + banMessage;
+					} else if (i.message == "/uptime") {
+						resultString = mapUptime.get(channel).getUptime();
+					} else {
+						resultString = i.message;
+					}
+					sendMessage(resultString, channel);
+					return;
+				}
 			}
 		}
-		var ix = message.indexOf( ":", 1 );
-		var words = message.substr(0, ix).split(" ");
-		message = message.substr(ix + 1);
-		
-		if (words[0] == "PING") {
-			Sys.print('PING [' + Date.now() + '] ');
-			send("PONG :" + message);
-		} else if (words[1] == "001") {
-			Sys.println("CONNECTED!");
-			for (c in config.channels) {
-				send("JOIN " + c);
-				//send("PRIVMSG " + c + " :meow");
-			}
-		} else if (words[1] == "PRIVMSG") {
-			// channel or pm user
-			var src = words[2];
-
-			// nick!user@host.name
-			var nick = words[0].substr(1, words[0].indexOf("!") - 1);
-
-			// first word of message interpreted as a command, rest as parameters
-			var cix = message.indexOf(" ");
-			var cmd = message.substr(0, cix);
-			message = message.substr(cix + 1);
-			Sys.println("(" + src + ") <" + nick + "> " + cmd + " " + message);
-
-			// commands
-
-			// preliminary join/part support
-			// TODO:update cfg.channels dynamically as well
-			if (nick == config.owner && cmd == ";join") {
-				send("JOIN " + message);
-			} else if (nick == config.owner && cmd == ";part") {
-				send("PART " + message);
-			}
+	}
+	
+	private function getChannel(message:String):String {
+		var channelRegEx = new EReg("#([a-z0-9_-]){2,}", "");
+		if (channelRegEx.match(message)) {
+			return channelRegEx.matched(0).substr(1);
 		}
+		return "";
 	}
 	
 }
