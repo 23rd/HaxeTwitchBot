@@ -1,0 +1,10 @@
+{
+	"channels": {
+		"twitch": [
+		{"command":"!test", "message":"This is test!"},
+		{"command":"(hello)|(hi)", "message":"Hey there!"},
+		{"command":"Screw streamer!", "message":"/timeout", "banMessage":"No, screw you!."}
+		]
+	}
+}
+
