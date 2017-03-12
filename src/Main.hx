@@ -2,6 +2,7 @@ package;
 
 import haxe.Json;
 import haxe.MainLoop;
+import haxe.Timer;
 import haxe.ds.StringMap;
 import sys.FileSystem;
 import sys.io.File;
@@ -26,6 +27,8 @@ typedef BotConfig = {
  */
 class Main {
 	
+	private inline static var MAIN_LOOP_DELAY:Float = 0.1;
+	
 	private var socket:Socket;
 
 	private var config:BotConfig;
@@ -37,14 +40,14 @@ class Main {
 	private var mapUptime:StringMap<Uptime>;
 	
 	private var commands:Dynamic;
+	
+	private var internetCounter:Int = 0;
+	
+	private var triesOfReconnect:Int = 0;
 
 	static function main() {
 		new Main();
 	}
-	
-	public inline function printSomethingInline() {
-        //untyped __cpp__('std::setlocale(0, "");');
-    }
 	
 	public function new() {
 		// default config
@@ -63,40 +66,78 @@ class Main {
 		
 		mapUptime = new StringMap<Uptime>();
 		
-		socket = new Socket();
-		socket.verifyCert = false;
-		socket.connect(new Host(config.server), config.port);
-		socket.setBlocking(false);
+		connectToIRC();
+	}
+	
+	private function mainLoopFunction():Void {
+		var responce;
+		try {
+			responce = sys.net.Socket.select([socket], null, null, 0);
+		} catch (e:Dynamic) {
+			connectToIRC();
+			trace("ERROR"); 
+			responce = sys.net.Socket.select([socket], null, null, 0);
+		};
+		if (responce.read.length > 0)
+			for (s in responce.read)
+				while (true)
+					try {
+						var msg = s.input.readLine();
+						handleMessage(msg);
+					} catch (e:Dynamic) {
+						internetCounter = 0;
+						break; 
+					}
+		mLoopEvt.delay(MAIN_LOOP_DELAY);
 		
-		if (config.serverPass != "") {
-			send("PASS " + config.serverPass);
+		// This is for check internet.
+		// Twitch ping to client every 5 minutes.
+		// If no messages have been received in five minutes, then the Internet has disappeared.
+		if (internetCounter > 310 * (1 / MAIN_LOOP_DELAY)) {
+			Sys.println("RECONNECTING...");
+			internetCounter -= Math.round(10 * (1 / MAIN_LOOP_DELAY));
+			mLoopEvt.stop();
+			reconnect();
+			updateUptimes();
 		}
-		send("NICK " + config.nick);
-		send("USER " + config.user + " 0 * :" + config.realName);
-		send("CAP REQ :twitch.tv/membership");
-		send("CAP REQ :twitch.tv/commands");
-		send("CAP REQ :twitch.tv/tags");
-		
-		// Add function for reading socket to MainLoop
-		mLoopEvt = MainLoop.add(function() {
-			var responce = sys.net.Socket.select([socket], null, null, 0);
-			// check if socket has incoming data and read each line in turn until EOF
-			if (responce.read.length > 0)
-				for (s in responce.read)
-					// loop will break when readLine throws EOF
-					while (true)
-						try {
-							var msg = s.input.readLine();
-							handleMessage(msg);
-							/*var a = Sys.stdin().readLine();
-							trace(a);*/
-						} catch (e:Dynamic) { break; }
-			// dont loop faster than 10 times per second
-			mLoopEvt.delay(0.1);
-		});
-		// grace please
-		//sock.shutdown(true, true);
-		//sock.close();
+		internetCounter++;
+	}
+	
+	private function updateUptimes():Void {
+		for (i in mapUptime.keys()) {
+			mapUptime.get(i).update();
+		}
+	}
+	
+	private function reconnect():Void {
+		socket.shutdown(true, true);
+		socket.close();
+		connectToIRC();
+	}
+	
+	private function connectToIRC():Void {
+		socket = new Socket();
+		try {
+			socket.verifyCert = false;
+			socket.connect(new Host(config.server), config.port);
+			socket.setBlocking(false);
+			
+			if (config.serverPass != "") {
+				send("PASS " + config.serverPass);
+			}
+			send("NICK " + config.nick);
+			send("USER " + config.user + " 0 * :" + config.realName);
+			send("CAP REQ :twitch.tv/membership");
+			send("CAP REQ :twitch.tv/commands");
+			send("CAP REQ :twitch.tv/tags");
+			
+			triesOfReconnect = 0;
+			
+			mLoopEvt = MainLoop.add(mainLoopFunction);
+		} catch (e:Dynamic) {
+			Sys.println("Trying to reconnect... [" + (++triesOfReconnect) + "]");
+			Timer.delay(connectToIRC, 1000);
+		}
 	}
 
 	private function sendMessage(string:String, channel:String) {
@@ -130,16 +171,23 @@ class Main {
 		resultString = "{" + resultString.substr(0, resultString.length - 1) + "}";
 		return Json.parse(resultString);
 	}
+	
+	private function mapUptimeAdd(channel:String):Void {
+		var c:String = channel.substr(1);
+		if (mapUptime.get(c) == null) {
+			mapUptime.set(c, new Uptime(c, config.clientId));
+		}
+	}
 
 	private function handleMessage(message:String) {
 		// Chop up the message for easier parsing.
-		trace(message);
+		trace("[" + Date.now() + "] " + message);
 		
 		if (message.indexOf("tmi.twitch.tv 376") > -1) {
 			Sys.println("CONNECTED!");
 			for (c in config.channels) {
 				send("JOIN " + c);
-				mapUptime.set(c.substr(1), new Uptime(c.substr(1), config.clientId));
+				mapUptimeAdd(c);
 			}
 			return;
 		}

@@ -13,11 +13,12 @@ class Uptime {
 	private var recorderLength:Int = 0;
 	private var channel:String;
 	private var clientId:String;
+	private var timer:Timer;
 
 	public function new(channel:String, clientId:String) {
 		this.channel = channel;
 		this.clientId = clientId;
-		var timer:Timer = new Timer(30 * 1000 * 60); // 30 minutes
+		timer = new Timer(30 * 1000 * 60); // 30 minutes
 		timer.run = loadBroadcastsJson;
 		timer.run();
 	}
@@ -37,6 +38,11 @@ class Uptime {
 		}
 		
 		recordedAt = recorded_at.substr(0, recorded_at.length - 1);
+	}
+	
+	public function update():Void {
+		timer.stop();
+		timer.run();
 	}
 	
 	public function getUptime():String {
