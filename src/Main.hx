@@ -192,6 +192,12 @@ class Main {
 			return;
 		}
 		
+		if (message.indexOf(" PING #") > -1) {
+			send("PONG :tmi.twitch.tv");
+			//Sys.command("cls");
+			return;
+		}
+		
 		if (message.indexOf("PRIVMSG") > -1) {
 			var messageArray:Array<String> = message.split(":");
 			var userInfo:Dynamic = tagToJson(messageArray[0]);
