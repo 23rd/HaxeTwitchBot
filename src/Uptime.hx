@@ -65,9 +65,9 @@ class Uptime {
 			stringResult = "Went offline for ";
 		} 
 		
-		stringResult += diffForTimer(Math.round(diffVar));
+		stringResult += timeToText(Math.round(diffVar));
 		if (recorderLength > 0) {
-		   stringResult += "Last stream length: " + diffForTimer(recorderLength * 1000); 
+		   stringResult += "Last stream length: " + timeToText(recorderLength * 1000); 
 		}
 		return stringResult;
 	}
@@ -85,7 +85,7 @@ class Uptime {
 		return offset;
 	}
 	
-	private function diffForTimer(time:Int) {
+	private function timeToText(time:Int):String {
 		var diff:Int = Math.floor(time / 1000);
 		var hours:Int = Math.floor(diff / 60 / 60);
 		diff -= hours * 60 * 60;
