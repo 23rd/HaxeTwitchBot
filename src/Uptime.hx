@@ -39,6 +39,8 @@ class Uptime {
 		} else {
 			recorderLength = 0;
 		}
+		
+		recordedAt = recorded_at.substr(0, recorded_at.length - 1);
 	}
 	
 	public function update():Void {
