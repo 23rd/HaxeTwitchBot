@@ -36,8 +36,6 @@ class Uptime {
 		} else {
 			recorderLength = 0;
 		}
-		
-		recordedAt = recorded_at.substr(0, recorded_at.length - 1);
 	}
 	
 	public function update():Void {
@@ -50,9 +48,7 @@ class Uptime {
 		if (recordedAt == "") {
 			return "Cant get uptime information.";
 		}
-		var timeString:String = recordedAt;
-		timeString = StringTools.replace(timeString, "T", " ");
-		timeString = StringTools.replace(timeString, "Z", "");
+		var timeString:String = removeTZ(recordedAt);
 		
 		var startDateDif:Date = Date.fromString(timeString);
 		var endDateDif:Date = Date.now();
@@ -93,6 +89,12 @@ class Uptime {
 		diff -= minutes * 60;
 		var seconds:Int = Math.round(diff);
 		return addZero(hours) + "h " + addZero(minutes) + "m " + addZero(seconds) + "s. ";
+	}
+	
+	private function removeTZ(str:String):String {
+		str = StringTools.replace(str, "T", " ");
+		str = StringTools.replace(str, "Z", "");
+		return str;
 	}
 	
 }
