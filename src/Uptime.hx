@@ -43,6 +43,14 @@ class Uptime {
 		timer.run();
 	}
 	
+	private function diffOfDates(startDate:Date, endDate:Date, makeOffset:Bool = false):Float {
+		var offset:Float = 0;
+		if (makeOffset) {
+			offset = (getTimezoneOffset()) * 60 * 1000;
+		}
+		return (endDate.getTime() + offset) - startDate.getTime();
+	}
+	
 	public function getUptime():String {
 		trace(channel, recordedAt);
 		if (recordedAt == "") {
@@ -53,7 +61,7 @@ class Uptime {
 		var startDateDif:Date = Date.fromString(timeString);
 		var endDateDif:Date = Date.now();
 		var offset:Float = (getTimezoneOffset()) * 60 * 1000;
-		var diffVar:Float = (endDateDif.getTime() + offset) - startDateDif.getTime();
+		var diffVar:Float = diffOfDates(startDateDif, endDateDif, true);
 		diffVar -= recorderLength * 1000;
 		
 		var stringResult = "";
