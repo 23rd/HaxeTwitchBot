@@ -14,6 +14,7 @@ class Uptime {
 	private var channel:String;
 	private var clientId:String;
 	private var timer:Timer;
+	private var timeBetweenVods:Float;
 
 	public function new(channel:String, clientId:String) {
 		this.channel = channel;
@@ -31,6 +32,8 @@ class Uptime {
 		}
 		var recorded_at:String = json.videos[0].recorded_at;
 		
+		timeBetweenVods = checkDiffBetweenVods(json, 0);
+		
 		if (json.videos[0].status == "recorded") {
 			recorderLength = json.videos[0].length;
 		} else {
@@ -41,6 +44,22 @@ class Uptime {
 	public function update():Void {
 		timer.stop();
 		timer.run();
+	}
+	
+	private function checkDiffBetweenVods(json:Dynamic, index:Int):Float {
+		if (json.videos.length <= index + 1) {
+			return 0;
+		}
+		var at:String = json.videos[index].recorded_at;
+		var at2:String = json.videos[index + 1].recorded_at;
+		var length2:Float = json.videos[index + 1].length * 1000;
+		
+		var diff:Float = diffOfDates(Date.fromString(removeTZ(at2)), Date.fromString(removeTZ(at)));
+		//20 minutes
+		if (diff - length2 < 1000 * 60 * 20) {
+			return length2 + checkDiffBetweenVods(json, index + 1);
+		}
+		return 0;
 	}
 	
 	private function diffOfDates(startDate:Date, endDate:Date, makeOffset:Bool = false):Float {
@@ -67,11 +86,13 @@ class Uptime {
 		var stringResult = "";
 		if (recorderLength > 0) {
 			stringResult = "Went offline for ";
-		} 
+		} else {
+			diffVar += timeBetweenVods;
+		}
 		
 		stringResult += timeToText(Math.round(diffVar));
 		if (recorderLength > 0) {
-		   stringResult += "Last stream length: " + timeToText(recorderLength * 1000); 
+		   stringResult += "Last stream length: " + timeToText(recorderLength * 1000 + timeBetweenVods); 
 		}
 		return stringResult;
 	}
@@ -89,7 +110,7 @@ class Uptime {
 		return offset;
 	}
 	
-	private function timeToText(time:Int):String {
+	private function timeToText(time:Float):String {
 		var diff:Int = Math.floor(time / 1000);
 		var hours:Int = Math.floor(diff / 60 / 60);
 		diff -= hours * 60 * 60;
